@@ -1,0 +1,39 @@
+name: Axiom Multi-Scanner
+on:
+  workflow_dispatch: # This MUST be here for the button to show
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  multi-recon:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Tools
+        run: |
+          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+          go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+          echo "/home/runner/go/bin" >> $GITHUB_PATH
+
+      - name: Run Scan
+        run: |
+          TARGETS=("monzo.com" "stockx.com" "lyst.com" "nordsecurity.com" "flickr.com")
+          for DOMAIN in "${TARGETS[@]}"; do
+            echo "Scanning $DOMAIN..."
+            subfinder -d $DOMAIN -silent | httpx -silent > live.txt
+            nuclei -l live.txt -rl 15 -bs 2 -severity medium,high,critical >> findings.txt
+            rm live.txt
+          done
+
+      - name: Save
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "Axiom-Scanner-Bot"
+          git add findings.txt
+          git commit -m "Manual Scan Results" || echo "No changes"
+          git push
