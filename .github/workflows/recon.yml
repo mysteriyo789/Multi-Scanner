@@ -1,53 +1,21 @@
-name: Axiom Multi-Scanner
-on:
-  schedule:
-    - cron: '0 0 * * *' # Runs every night automatically
-  workflow_dispatch: # Allows you to start it manually from the UI
-
-jobs:
-  multi-recon:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Install Hacking Tools
+- name: Run Multi-Target Scan
         run: |
-          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-          go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
-          go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-          echo "/home/runner/go/bin" >> $GITHUB_PATH
-
-      - name: Run Multi-Target Scan
-        run: |
-          # The 5 targets we selected
           TARGETS=("monzo.com" "stockx.com" "lyst.com" "nordsecurity.com" "flickr.com")
-          
-          echo "Starting Master Scan for 5 targets..."
           
           for DOMAIN in "${TARGETS[@]}"; do
             echo "--- Scanning $DOMAIN ---"
             
-            # Subdomain discovery
+            # 1. Faster Discovery
             subfinder -d $DOMAIN -silent -o temp_subs.txt
             
-            # Filter live web servers
-            cat temp_subs.txt | httpx -silent -o temp_live.txt
+            # 2. Filter live assets and limit to top 20 to ensure we finish
+            cat temp_subs.txt | httpx -silent -rl 50 | head -n 20 > temp_live.txt
             
-            # Vulnerability scanning (Throttled to stay stealthy)
-            # We append all findings to one master file
-            nuclei -l temp_live.txt -rl 10 -bs 2 >> findings.txt
+            # 3. Optimized Scanning
+            # Added -severity medium,high,critical to skip low-priority info logs
+            # Added -timeout 3 to skip hanging servers faster
+            # Increased -rl to 20 for a better balance
+            nuclei -l temp_live.txt -rl 20 -bs 5 -timeout 3 -severity medium,high,critical >> findings.txt
             
-            # Clean up temp files for next loop
             rm temp_subs.txt temp_live.txt
           done
-
-      - name: Save Findings to Repo
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "Axiom-Scanner-Bot"
-          git add findings.txt
-          git commit -m "Full 5-Company Scan Results - $(date)" || echo "No new findings"
-          git push
