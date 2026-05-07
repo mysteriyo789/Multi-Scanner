@@ -1,23 +1,42 @@
-- name: Run Optimized Scan
+name: Axiom Multi-Scanner
+on:
+  workflow_dispatch: # Manual button
+  push:
+    branches:
+      - main # This forces it to run once so GitHub "sees" it
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  multi-recon:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Tools
+        run: |
+          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+          go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+          echo "/home/runner/go/bin" >> $GITHUB_PATH
+
+      - name: Run Turbo Scan
         run: |
           TARGETS=("monzo.com" "stockx.com" "lyst.com" "nordsecurity.com" "flickr.com")
-          
           for DOMAIN in "${TARGETS[@]}"; do
-            echo "--- Scanning $DOMAIN ---"
-            
-            # 1. Probe for REAL web servers only (Skip the ghosts)
-            # -p 80,443 ensures we only talk to standard web ports
+            echo "Scanning $DOMAIN..."
             subfinder -d $DOMAIN -silent | httpx -silent -p 80,443 -rl 50 | head -n 25 > temp_live.txt
-            
-            # 2. Turbo-charged Nuclei
-            # -nm (no-mismatch): Skips hosts that don't match the template tech
-            # -hm (host-max-errors): If a host fails 10 times, we ABANDON it immediately
-            # -concurrency 50: Scan more templates at once
-            nuclei -l temp_live.txt \
-                   -severity medium,high,critical \
-                   -rl 30 -bs 10 -c 50 \
-                   -nm -hm 10 -timeout 2 \
-                   >> findings.txt
-            
+            nuclei -l temp_live.txt -severity medium,high,critical -rl 30 -bs 10 -c 50 -nm -hm 10 -timeout 2 >> findings.txt
             rm temp_live.txt
           done
+
+      - name: Save
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "Axiom-Scanner-Bot"
+          git add findings.txt
+          git commit -m "Automated Scan Results" || echo "No changes"
+          git push
