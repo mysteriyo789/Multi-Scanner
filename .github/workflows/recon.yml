@@ -1,43 +1,23 @@
-name: Axiom Multi-Scanner
-on:
-  schedule:
-    - cron: '0 0 * * *' 
-  workflow_dispatch:
-
-jobs:
-  multi-recon:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Install Hacking Tools
-        run: |
-          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-          go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
-          go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-          echo "/home/runner/go/bin" >> $GITHUB_PATH
-
-      - name: Run Optimized Scan
+- name: Run Optimized Scan
         run: |
           TARGETS=("monzo.com" "stockx.com" "lyst.com" "nordsecurity.com" "flickr.com")
           
           for DOMAIN in "${TARGETS[@]}"; do
             echo "--- Scanning $DOMAIN ---"
-            # 1. Quick Discovery
-            # 2. Limit to top 30 subdomains to ensure we finish fast
-            # 3. Only look for Medium, High, and Critical bugs (the ones that pay)
-            subfinder -d $DOMAIN -silent | httpx -silent | head -n 30 > temp_live.txt
-            nuclei -l temp_live.txt -rl 20 -bs 5 -severity medium,high,critical >> findings.txt
+            
+            # 1. Probe for REAL web servers only (Skip the ghosts)
+            # -p 80,443 ensures we only talk to standard web ports
+            subfinder -d $DOMAIN -silent | httpx -silent -p 80,443 -rl 50 | head -n 25 > temp_live.txt
+            
+            # 2. Turbo-charged Nuclei
+            # -nm (no-mismatch): Skips hosts that don't match the template tech
+            # -hm (host-max-errors): If a host fails 10 times, we ABANDON it immediately
+            # -concurrency 50: Scan more templates at once
+            nuclei -l temp_live.txt \
+                   -severity medium,high,critical \
+                   -rl 30 -bs 10 -c 50 \
+                   -nm -hm 10 -timeout 2 \
+                   >> findings.txt
+            
             rm temp_live.txt
           done
-
-      - name: Save Findings
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "Axiom-Scanner-Bot"
-          git add findings.txt
-          git commit -m "Results for 5 Targets - $(date)" || echo "No changes"
-          git push
