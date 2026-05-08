@@ -1,15 +1,15 @@
 name: Axiom Multi-Scanner
 on:
-  workflow_dispatch: # Manual button
-  push:
-    branches:
-      - main # This forces it to run once so GitHub "sees" it
+  workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'
 
 jobs:
   multi-recon:
     runs-on: ubuntu-latest
+    # This tells GitHub to kill the job at 350 mins so we can save 
+    # findings before the hard 360 min (6h) limit kills everything.
+    timeout-minutes: 350 
     permissions:
       contents: write
     steps:
@@ -28,15 +28,28 @@ jobs:
           TARGETS=("monzo.com" "stockx.com" "lyst.com" "nordsecurity.com" "flickr.com")
           for DOMAIN in "${TARGETS[@]}"; do
             echo "Scanning $DOMAIN..."
+            
+            # STRICT FILTERING: Only port 80 and 443. 
+            # This prevents the scanner from wasting 2 hours on port 43800.
             subfinder -d $DOMAIN -silent | httpx -silent -p 80,443 -rl 50 | head -n 25 > temp_live.txt
-            nuclei -l temp_live.txt -severity medium,high,critical -rl 30 -bs 10 -c 50 -nm -hm 10 -timeout 2 >> findings.txt
+            
+            # Added -it tags to skip slow "headless" or "fuzz" templates
+            # Added -etags to exclude slow network/denial-of-service templates
+            nuclei -l temp_live.txt \
+                   -severity medium,high,critical \
+                   -rl 40 -bs 10 -c 60 \
+                   -nm -hm 5 -timeout 1 \
+                   -etags slow,dos,fuzz \
+                   >> findings.txt
+            
             rm temp_live.txt
           done
 
       - name: Save
+        if: always() # This ensures it saves even if the scan partially fails
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "Axiom-Scanner-Bot"
           git add findings.txt
-          git commit -m "Automated Scan Results" || echo "No changes"
+          git commit -m "Partial or Full Results - $(date)" || echo "No changes"
           git push
