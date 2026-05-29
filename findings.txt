@@ -82,3 +82,11 @@
 [[93mWRN[0m] The concurrency value is higher than max-host-error
 [[93mWRN[0m] The concurrency value is higher than max-host-error
 [[93mWRN[0m] The concurrency value is higher than max-host-error
+[[93mWRN[0m] The concurrency value is higher than max-host-error
+[[93mWRN[0m] Loading 1 unsigned templates for scan. Use with caution.
+[[93mWRN[0m] The concurrency value is higher than max-host-error
+[[93mWRN[0m] Loading 1 unsigned templates for scan. Use with caution.
+[[93mWRN[0m] The concurrency value is higher than max-host-error
+[[93mWRN[0m] Loading 1 unsigned templates for scan. Use with caution.
+[[93mWRN[0m] The concurrency value is higher than max-host-error
+[[93mWRN[0m] Loading 1 unsigned templates for scan. Use with caution.
